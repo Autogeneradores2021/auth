@@ -1,5 +1,6 @@
 <?php
 
+use App\Database\Migrations\DatabaseSchema;
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
@@ -72,7 +73,7 @@ return new class extends Migration
             $table->index(['expires_at', 'is_active'], 'idx_expires_active');
 
             // Índice único para evitar códigos activos duplicados por usuario y tipo
-            $table->unique(['identifier', 'type', 'is_active'], 'unique_active_code_per_user_type')
+            $table->unique(['identifier', 'type', 'is_active'], 'uniq_act_code_usr_typ')
                 ->where('is_active', true);
         });
 

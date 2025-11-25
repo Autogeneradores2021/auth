@@ -6,7 +6,7 @@
     },
     "servers": [
         {
-            "url": "/easy-auth/public"
+            "url": "/auth-eh-api/public"
         }
     ],
     "paths": {

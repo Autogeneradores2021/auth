@@ -58,7 +58,7 @@
         }
 
         .header {
-            background: linear-gradient(135deg, #3d84a8 0%, #5a9bc4 100%);
+            background: linear-gradient(135deg, #008dcc 0%, #008dcc 100%);
             padding: 40px 30px;
             text-align: center;
             position: relative;
@@ -233,7 +233,7 @@
         }
 
         .footer {
-            background: linear-gradient(135deg, #2c6280 0%, #3d84a8 100%);
+            background: linear-gradient(135deg, #008dcc 0%, #008dcc 100%);
             color: #ffffff;
             padding: 32px 40px;
             text-align: center;
