@@ -15,6 +15,8 @@ return [
 
     'name' => env('APP_NAME', 'Laravel'),
 
+    'trade_name' => env('APP_TRADE_NAME', 'Auth EH API'),
+
     /*
     |--------------------------------------------------------------------------
     | Application Environment
