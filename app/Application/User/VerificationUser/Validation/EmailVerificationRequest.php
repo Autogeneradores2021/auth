@@ -19,7 +19,7 @@ class EmailVerificationRequest extends FormRequest
             'email' => [
                 'required',
                 'string',
-                'email:rfc,dns', // Validación RFC + DNS
+                'email:rfc', // Validación RFC + DNS
                 'max:255'
                 //'exists:users,email', // Verificar que el usuario existe
             ]
