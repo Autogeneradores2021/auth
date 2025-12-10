@@ -12,7 +12,7 @@ class CodeVerificationController extends Controller
 
     /**
      * @OA\Post(
-     *     path="/api/v1/user/verification-code",
+     *     path="/api/v1/user/verification/code",
      *     tags={"User"},
      *     summary="Validar el código de verificación y obtener el token",
      *     description="Valida un código de verificación de email. Devuelve un token de un solo uso si tiene éxito.",
