@@ -137,6 +137,6 @@ RUN composer install --optimize-autoloader --no-dev
 #Limpiar cache
 #RUN php artisan optimize:clear
 
-EXPOSE 8017
+#EXPOSE 8017
 
 CMD ["/usr/bin/supervisord", "-c", "/etc/supervisor/conf.d/supervisord.conf"]

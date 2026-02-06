@@ -20,10 +20,9 @@ class EmailVerificationRequest extends FormRequest
                 'required',
                 'string',
                 'email:rfc,dns', // Validación RFC + DNS
-                'max:255',
+                'max:255'
                 //'exists:users,email', // Verificar que el usuario existe
-                'regex:/^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/', // Formato estricto
-            ],
+            ]
         ];
     }
 

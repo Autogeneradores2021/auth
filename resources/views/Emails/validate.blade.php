@@ -311,7 +311,7 @@
 
             <p style="color: #2c3e50; line-height: 1.7; font-size: 16px; text-align: center;">
                 Has solicitado un código de verificación para acceder a tu cuenta en
-                <strong style="color: #3d84a8;">{{ config('app.name') }}</strong>.
+                <strong style="color: #3d84a8;">{{ config('app.trade_name') }}</strong>.
                 Utiliza el siguiente código para completar el proceso:
             </p>
 
