@@ -119,7 +119,7 @@ return [
             'port' => env('DB_PORT', '1521'),
             'database' => env('DB_DATABASE', ''),
             'username' => env('DB_USERNAME', ''),
-            'password' => env('DB_PASSWORD', ''),
+            'password' => env('DB_PASSWORD', 'eslkMCaZo1?38bZkjhg548$654ljhu'),
             'service_name' => env('DB_SERVICE_NAME', ''),
             'charset' => 'AL32UTF8',
             'prefix' => '',
