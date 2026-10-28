@@ -22,6 +22,8 @@ metadata:
     - php-8-4        # lenguaje y versión
     - laravel-12     # framework y versión
     - interna        # interna o externa
+    - Docker
+    - apache-trixie
 
   # LINKS: se muestran como enlaces en la página del componente
   links:
