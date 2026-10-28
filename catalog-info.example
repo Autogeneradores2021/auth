@@ -1,0 +1,51 @@
+# Plantilla de catalog-info.yaml para las aplicaciones de ElectroHuila
+# Copiar a la RAÍZ del repositorio de cada aplicación (rama principal)
+# y reemplazar los valores de ejemplo.
+
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  # NOMBRE: único, minúsculas y guiones (sin espacios)
+  name: portal-clientes
+  title: Portal Clientes
+
+  # DESCRIPCIÓN: algo breve
+  description: Portal web de atención a clientes
+
+  annotations:
+    github.com/project-slug: electrohuila/portal-clientes
+    backstage.io/source-location: url:https://github.com/electrohuila/portal-clientes
+
+  # ETIQUETAS: solo minúsculas, números y - : + #
+  # NO se permiten puntos, espacios, mayúsculas ni URLs
+  tags:
+    - php-8-2        # lenguaje y versión
+    - laravel-10     # framework y versión
+    - interna        # interna o externa
+
+  # LINKS: se muestran como enlaces en la página del componente
+  links:
+    - url: https://portal.electrohuila.com.co
+      title: Producción
+      type: produccion
+    - url: https://qa-portal.electrohuila.com.co
+      title: QA
+      type: qa
+
+spec:
+  # TIPO: frontend | backend
+  type: frontend
+
+  # CICLO DE VIDA: produccion | qa
+  lifecycle: produccion
+
+  # RESPONSABLE: deja solo UNA de estas opciones
+  #   Brayan Medina Cardozo  -> user:default/brayanmedinacardozo96
+  #   Héctor Coronado        -> user:default/hcoronadog
+  #   Darwin Fierro          -> user:default/DarwinFierroElectro
+  #   Los tres (equipo)      -> group:default/equipo-desarrollo
+  owner: user:default/brayanmedinacardozo96
+
+  # SISTEMA: IP del servidor de producción
+  # Debe existir en servidores.yaml del repositorio de Backstage
+  system: 10.0.1.25

@@ -1,142 +1,144 @@
-FROM php:8.3-apache
+# syntax=docker/dockerfile:1.7
+#
+# Imagen de PRODUCCIÓN: sin Xdebug, sin Composer ni compiladores en runtime.
+# Supervisor y Apache arrancan como root; peticiones y workers usan www-data.
+#
+#   docker build -f Dockerfile -t miapp:prod .
+#   docker run -p 8083:80 -p 8443:443 --env-file .env.prod \
+#     --mount type=bind,src=/ruta/server.pem,dst=/etc/ssl/certs/server.pem,readonly \
+#     --mount type=bind,src=/ruta/server.key,dst=/etc/ssl/private/server.key,readonly miapp:prod
+#
+# Recomendado: fijar también el digest de la imagen base
+#   php:8.4.27-apache-trixie@sha256:<digest>
+ARG PHP_IMAGE=php:8.4.27-apache-trixie
+# OCI8 salió del core en PHP 8.4: se instala desde PECL (3.4.x para PHP 8.4)
+ARG OCI8_VERSION=3.4.0
+ARG IC_DIR=/opt/oracle/instantclient_21_3
 
-# Actualiza zona horaria
-ENV TZ=America/Bogota
+############################################
+# 1. Compilar OCI8 (SDK y compiladores no llegan a la imagen final)
+############################################
+FROM ${PHP_IMAGE} AS oci8-build
+ARG OCI8_VERSION
+ARG IC_DIR
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends $PHPIZE_DEPS unzip libaio1t64 \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY docker/config/instantclient-basic-linux.x64-21.3.0.0.0.zip \
+     docker/config/instantclient-sdk-linux.x64-21.3.0.0.0.zip /tmp/
+
+RUN unzip -q /tmp/instantclient-basic-linux.x64-21.3.0.0.0.zip -d /opt/oracle \
+    && unzip -q /tmp/instantclient-sdk-linux.x64-21.3.0.0.0.zip -d /opt/oracle \
+    && rm /tmp/*.zip \
+    && ln -sf /usr/lib/x86_64-linux-gnu/libaio.so.1t64 /usr/lib/x86_64-linux-gnu/libaio.so.1 \
+    && echo "${IC_DIR}" > /etc/ld.so.conf.d/oracle-instantclient.conf && ldconfig \
+    && echo "instantclient,${IC_DIR}" | pecl install oci8-${OCI8_VERSION} \
+    && docker-php-ext-enable oci8 \
+    && rm -rf "${IC_DIR}/sdk" \
+    && ln -s "${IC_DIR}" /opt/oracle/instantclient
+
+############################################
+# 2. Runtime base: PHP + extensiones
+############################################
+FROM ${PHP_IMAGE} AS runtime
+ARG IC_DIR
+
+ENV TZ=America/Bogota \
+    ORACLE_HOME=${IC_DIR}
+
+# Rechazar bases con PHP vulnerable (CVE-2026-109618 / CVE-2026-109619)
+RUN php -r 'if (version_compare(PHP_VERSION, "8.4.27", "<")) { fwrite(STDERR, "PHP >= 8.4.27 required, found " . PHP_VERSION . PHP_EOL); exit(1); }'
+
 RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
 
-# Establecer parámetros principales
-ARG environment
+# install-php-extensions elimina las dependencias de compilación al terminar
+COPY --from=mlocati/php-extension-installer:2 /usr/bin/install-php-extensions /usr/local/bin/
+RUN install-php-extensions \
+        opcache pdo_pgsql pgsql pdo_mysql mysqli mbstring zip exif pcntl bcmath gd sockets soap \
+    && rm /usr/local/bin/install-php-extensions
 
-ENV ENV=$environment
-ENV APP_HOME /var/www/html
-ENV USERNAME=www-data
-ENV USER=root
+# Runtime de Oracle: libaio + Instant Client "basic" (sin SDK)
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends libaio1t64 curl supervisor locales \
+    && echo 'en_US.UTF-8 UTF-8' > /etc/locale.gen \
+    && locale-gen \
+    && rm -rf /var/lib/apt/lists/* \
+    && ln -sf /usr/lib/x86_64-linux-gnu/libaio.so.1t64 /usr/lib/x86_64-linux-gnu/libaio.so.1
+COPY --from=oci8-build /opt/oracle /opt/oracle
+COPY --from=oci8-build /etc/ld.so.conf.d/oracle-instantclient.conf /etc/ld.so.conf.d/
+COPY --from=oci8-build /usr/local/lib/php/extensions/ /usr/local/lib/php/extensions/
+COPY --from=oci8-build /usr/local/etc/php/conf.d/docker-php-ext-oci8.ini /usr/local/etc/php/conf.d/
+RUN ldconfig \
+    && php -r 'if (!extension_loaded("oci8")) { fwrite(STDERR, "OCI8 is required\n"); exit(1); } echo oci_client_version(), PHP_EOL;'
 
-# check environment
-RUN if [ "$ENV" = "staging" ]; then echo "Building staging environment."; \
-    elif [ "$ENV" = "production" ]; then echo "Building production environment."; \
-    else echo "Set correct ENV in docker build-args like --build-arg ENV=dev. Available choices are staging, production." && exit 1; \
-    fi
+# Apache: sin firma de versión, sin TRACE
+RUN a2enmod rewrite headers ssl socache_shmcb \
+    && a2dissite 000-default \
+    && sed -ri \
+        -e 's/^ServerTokens .*/ServerTokens Prod/' \
+        -e 's/^ServerSignature .*/ServerSignature Off/' \
+        -e 's/^TraceEnable .*/TraceEnable Off/' \
+        /etc/apache2/conf-available/security.conf
 
-# instalacion de dependencias
-RUN apt-get update && apt-get install -y \
-    git \
-    curl \
-    libpng-dev \
-    libonig-dev \
-    libxml2-dev \
-    zip \
-    unzip \
-    libaio-dev \
-    libzip-dev \
-    vim \
-    libcurl4-openssl-dev \
-    supervisor
+COPY docker/config/apache-app.conf /etc/apache2/sites-available/app.conf
+RUN a2ensite app
 
+RUN mkdir -p /var/cache/php-soap && chown www-data:www-data /var/cache/php-soap && chmod 700 /var/cache/php-soap
 
-# Se instala manualmente libaio1, requerido por Oracle Instant Client
-RUN apt-get update && apt-get install -y wget \
-    && wget http://ftp.debian.org/debian/pool/main/liba/libaio/libaio1_0.3.112-9_amd64.deb -O /tmp/libaio1.deb \
-    && dpkg -i /tmp/libaio1.deb \
-    && rm /tmp/libaio1.deb
+# Configuración PHP de producción
+COPY docker/config/php.ini-production /usr/local/etc/php/php.ini
+COPY <<'EOF' /usr/local/etc/php/conf.d/zz-app.ini
+date.timezone=America/Bogota
+expose_php=Off
+memory_limit=512M
+upload_max_filesize=64M
+post_max_size=64M
+; Mitigación CVE-2026-109619 / CVE-2026-115560 (mantener hasta el próximo release de PHP)
+session.upload_progress.enabled=0
+opcache.enable=1
+; El código es inmutable dentro de la imagen
+opcache.validate_timestamps=0
+opcache.jit=tracing
+opcache.jit_buffer_size=256M
+soap.wsdl_cache_enabled=1
+soap.wsdl_cache_dir=/var/cache/php-soap
+EOF
 
-# Instala locales
-RUN apt-get install -y locales && echo "en_US.UTF-8 UTF-8" > /etc/locale.gen && locale-gen
+############################################
+# 3. Dependencias Composer (Composer no llega a la imagen final)
+############################################
+FROM runtime AS vendor
+COPY --from=composer:2 /usr/bin/composer /usr/local/bin/composer
+WORKDIR /app
+COPY composer.json composer.lock ./
+RUN --mount=type=cache,target=/tmp/composer-cache \
+    COMPOSER_CACHE_DIR=/tmp/composer-cache \
+    composer install --no-dev --prefer-dist --no-interaction --no-progress \
+        --no-scripts --no-autoloader
+COPY . .
+RUN composer dump-autoload --optimize --no-dev --no-interaction
 
-# Install composer
-# RUN curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer
+############################################
+# 4. Imagen final
+############################################
+FROM runtime
 
-# Instala composer
-COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
-RUN chmod +x /usr/bin/composer
+WORKDIR /var/www/html
+EXPOSE 80 443
 
-# Descarga los archivos de Oracle Instant Client
-COPY ./docker/config/instantclient-basic-linux.x64-21.3.0.0.0.zip /tmp/
-COPY ./docker/config/instantclient-sdk-linux.x64-21.3.0.0.0.zip /tmp/
+# Código propiedad de root => solo lectura para www-data
+COPY --from=vendor /app /var/www/html
+COPY docker/config/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 
-# Descomprime los archivos de Oracle Instant Client
-RUN unzip /tmp/instantclient-basic-linux.x64-21.3.0.0.0.zip -d /opt/oracle \
-    && unzip /tmp/instantclient-sdk-linux.x64-21.3.0.0.0.zip -d /opt/oracle \
-    && ln -s /opt/oracle/instantclient_21_3 /opt/oracle/instantclient \
-    && rm /tmp/instantclient-basic-linux.x64-21.3.0.0.0.zip \
-    && rm /tmp/instantclient-sdk-linux.x64-21.3.0.0.0.zip
+RUN mkdir -p storage/framework/cache/data storage/framework/sessions storage/framework/views \
+        storage/logs bootstrap/cache public/upload \
+    && chmod -R go-w /var/www/html \
+    && chown -R www-data:www-data storage bootstrap/cache public/upload \
+    && chmod -R ug+rwX storage bootstrap/cache public/upload
 
+HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
+    CMD curl -fsS --max-time 4 http://localhost/up -o /dev/null || exit 1
 
-COPY ./docker/config/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
-
-
-# Configurando Oracle Instant Client
-RUN sh -c "echo /opt/oracle/instantclient_21_3 > /etc/ld.so.conf.d/oracle-instantclient.conf"
-RUN ldconfig
-
-
-ENV ORACLE_HOME /opt/oracle/instantclient_19_19
-
-
-# Agregando variables de entorno
-ENV PATH=$ORACLE_HOME:/usr/sbin:$PATH \
-    LD_LIBRARY_PATH=$ORACLE_HOME:/usr/lib \
-    CLASSPATH=$ORACLE_HOME
-
-
-#Habilitar extensiones
-RUN docker-php-ext-configure oci8 --with-oci8=instantclient,/opt/oracle/instantclient_21_3
-RUN docker-php-ext-install curl pdo pdo_mysql mysqli mbstring exif pcntl bcmath gd sockets oci8 zip
-
-
-# limpiar cache
-RUN apt-get clean && rm -rf /var/lib/apt/lists/*
-
-
-# 3. mod_rewrite for URL rewrite and mod_headers for .htaccess extra headers like Access-Control-Allow-Origin-
-RUN a2enmod rewrite headers
-
-RUN chmod -R 777 /var/www/html
-
-# 4. start with base php config, then add extensions
-RUN mv "$PHP_INI_DIR/php.ini-development" "$PHP_INI_DIR/php.ini"
-
-
-# Deshabilitar el sitio predeterminado y eliminar todos los archivos predeterminados dentro de APP_HOME
-RUN a2dissite 000-default.conf
-RUN rm -r $APP_HOME
-
-#Copiamos los certificados
-COPY ./docker/ssl/server.pem /etc/ssl/certs/server.pem
-COPY ./docker/ssl/server.key /etc/ssl/private/server.key
-COPY ./docker/config/php.ini-production /usr/local/etc/php/php.ini
-
-# Cambia los valores de los certificados y claves en el archivo de configuracion de apache
-RUN sed -i '/SSLCertificateFile.*snakeoil\.pem/c\SSLCertificateFile \/etc\/ssl\/certs\/server.pem' /etc/apache2/sites-available/default-ssl.conf
-RUN sed -i '/SSLCertificateKeyFile.*snakeoil\.key/cSSLCertificateKeyFile /etc/ssl/private/server.key\' /etc/apache2/sites-available/default-ssl.conf
-
-# Habilitar módulos apache
-RUN a2enmod rewrite
-RUN a2enmod ssl
-RUN a2enmod socache_shmcb
-RUN a2ensite default-ssl
-
-#cambiar directorio de trabajo
-USER $USER
-WORKDIR $APP_HOME
-
-
-#Copiar archivos fuente y archivo de configuración
-COPY --chown=${USERNAME}:${USERNAME} . $APP_HOME/
-
-#Crear upload
-RUN mkdir -p public/upload
-
-#Permisos
-RUN chmod -R 777 $APP_HOME/storage
-RUN chmod -R 777 $APP_HOME/bootstrap
-
-#instalar dependencias del proyecto
-RUN composer install --optimize-autoloader --no-dev
-
-#Limpiar cache
-#RUN php artisan optimize:clear
-
-#EXPOSE 8017
-
-CMD ["/usr/bin/supervisord", "-c", "/etc/supervisor/conf.d/supervisord.conf"]
+CMD ["/bin/sh", "-c", "apache2ctl -t && exec /usr/bin/supervisord -c /etc/supervisor/conf.d/supervisord.conf"]

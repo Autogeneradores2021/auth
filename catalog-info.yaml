@@ -1,0 +1,46 @@
+# Plantilla de catalog-info.yaml para las aplicaciones de ElectroHuila
+# Copiar a la RAÍZ del repositorio de cada aplicación (rama principal)
+# y reemplazar los valores de ejemplo.
+
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  # NOMBRE: único, minúsculas y guiones (sin espacios)
+  name: auth
+  title: Auth
+
+  # DESCRIPCIÓN: algo breve
+  description: Servicio de autenticación para aplicaciones de ElectroHuila OTP
+
+  annotations:
+    github.com/project-slug: Autogeneradores2021/auth
+    backstage.io/source-location: url:https://github.com/Autogeneradores2021/auth
+
+  # ETIQUETAS: solo minúsculas, números y - : + #
+  # NO se permiten puntos, espacios, mayúsculas ni URLs
+  tags:
+    - php-8-4        # lenguaje y versión
+    - laravel-12     # framework y versión
+    - interna        # interna o externa
+
+  # LINKS: se muestran como enlaces en la página del componente
+  links:
+    - url: https://auth.electrohuila.com.co
+      title: Producción
+      type: produccion
+    - url: https://qa-enlinea.electrohuila.com.co:8017/public/api/documentation
+      title: QA
+      type: qa
+
+spec:
+  # TIPO: frontend | backend
+  type: backend
+
+  # CICLO DE VIDA: produccion | qa
+  lifecycle: produccion
+
+  # RESPONSABLE: deja solo UNA de estas opciones
+  owner: user:default/brayanmedinacardozo96
+
+  # SISTEMA: IP del servidor de producción
+  system: 0.0.0.23
